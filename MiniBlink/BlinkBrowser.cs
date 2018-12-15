@@ -70,6 +70,8 @@ namespace MiniBlinkPinvoke
 
         wkeOnShowDevtoolsCallback _wkeOnShowDevtoolsCallback;
 
+        public AssetsManger AssetsManger;
+
         public void ShowDevtools(string path)
         {
             BlinkBrowserPInvoke.wkeShowDevtools(this.handle, path, _wkeOnShowDevtoolsCallback, IntPtr.Zero);
@@ -224,89 +226,16 @@ namespace MiniBlinkPinvoke
                     return true;
                 }
             }
-            if (url.StartsWith("mb://"))
-            {
-                Regex regex = new Regex(@"mb://", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
-                string str = regex.Replace(url, "");
-                str = str.Replace('/', '.');
-                LoadResource(str, job);
-                return true;
+            if (AssetsManger != null) {
+                if (AssetsManger.OnUrlLoad(url, job)) {
+                    return true;
+                }
             }
-            else if (url.StartsWith("assets://"))
-            {
-                Regex regex = new Regex(@"assets://", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
-                string str = regex.Replace(url, "");
-                str = str.Replace('/', '.');
-                LoadResource(str, job);
-                return true;
-            }
-            else
-            {
-                //如果需要 OnwkeLoadUrlEndCallback 回调，需要取消注释下面的 hook
-                BlinkBrowserPInvoke.wkeNetHookRequest(job);
-            }
+            //如果需要 OnwkeLoadUrlEndCallback 回调，需要取消注释下面的 hook
+            BlinkBrowserPInvoke.wkeNetHookRequest(job);
             return false;
         }
 
-        private void LoadResource(string str, IntPtr job) {
-            System.Reflection.Assembly Assemblys = Assembly.GetExecutingAssembly();
-            if (Assemblys != null)
-            {
-                using (Stream sm = Assemblys.GetManifestResourceStream(mResNameSpace + "." + str))
-                {
-                    if (sm != null)
-                    {
-                        StreamReader m_stream = new StreamReader(sm, Encoding.Default);
-                        m_stream.BaseStream.Seek(0, SeekOrigin.Begin);
-                        string strLine = m_stream.ReadToEnd();
-                        m_stream.Close();
-                        string data = strLine;
-                        if (url.EndsWith(".css"))
-                        {
-                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/css"));
-                        }
-                        else if (url.EndsWith(".png"))
-                        {
-                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/png"));
-                        }
-                        else if (url.EndsWith(".gif"))
-                        {
-                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/gif"));
-                        }
-                        else if (url.EndsWith(".jpg"))
-                        {
-                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/jpg"));
-                        }
-                        else if (url.EndsWith(".js"))
-                        {
-                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("application/javascript"));
-                        }
-                        else
-                        {
-                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/html"));
-                        }
-                        //wkeNetSetURL(job, url);
-                        BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
-                    }
-                    else
-                    {
-                        ResNotFond(url, job);
-                    }
-                }
-            }
-            else
-            {
-                ResNotFond(url, job);
-            }
-        }
-
-        private static void ResNotFond(string url, IntPtr job)
-        {
-            string data = "<html><head><title>404没有找到资源</title></head><body>404没有找到资源</body></html>";
-            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/html"));
-            //wkeNetSetURL(job, url);
-            BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
-        }
         IntPtr OnwkeCreateViewCallback(IntPtr webView, IntPtr param, wkeNavigationType navigationType, IntPtr url)
         {
             if (OnCreateViewEvent != null)

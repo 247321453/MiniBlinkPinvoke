@@ -19,8 +19,6 @@ namespace MiniBlinkPinvoke
 
     public class BlinkBrowser : Control, IMessageFilter
     {
-        public string ResNameSpace { get => mResNameSpace; set => mResNameSpace = value; }
-        private string mResNameSpace = "MiniBlinkPinvoke";
         //ModManager
         //Timer timer = new Timer();
         public bool CookieEnabled { get; set; }

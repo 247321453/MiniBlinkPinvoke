@@ -26,7 +26,7 @@ namespace MiniBlinkPinvoke
             {
                 Regex regex = new Regex(@"assets://", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
                 string str = regex.Replace(url, "");
-                LoadResource(url, PathToResName(str), job);
+                LoadResource(url, str, job);
                 return true;
             }
             return false;

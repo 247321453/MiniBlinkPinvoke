@@ -78,7 +78,8 @@ namespace MiniBlinkPinvoke
         public wkeOnShowDevtoolsCallback WkeOnShowDevtoolsCallback { set => _wkeOnShowDevtoolsCallback = value; get => _wkeOnShowDevtoolsCallback; }
 
 
-        public void SetAssetsManger(AssetsManger mgr) {
+        public void SetAssetsManger(AssetsManger mgr)
+        {
             Assets = mgr;
         }
 
@@ -147,22 +148,20 @@ namespace MiniBlinkPinvoke
         /// <returns></returns>
         bool OnwkeLoadUrlBeginCallback(IntPtr webView, IntPtr param, string url, IntPtr job)
         {
-            using (Response response = new Response(job))
+            Response response = new Response(job);
+            //mb://index.html/js/index.js
+            if (OnWebLoadResource != null)
             {
-                //mb://index.html/js/index.js
-                if (OnWebLoadResource != null)
+                if (OnWebLoadResource.Invoke(url, response))
                 {
-                    if (OnWebLoadResource.Invoke(url, response))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
-                if (Assets != null)
+            }
+            if (Assets != null)
+            {
+                if (Assets.OnUrlLoad(url, response))
                 {
-                    if (Assets.OnUrlLoad(url, response))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
             //如果需要 OnwkeLoadUrlEndCallback 回调，需要取消注释下面的 hook

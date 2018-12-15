@@ -36,6 +36,10 @@ namespace MiniBlinkPinvoke
             BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
         }
 
+        public void SetData(IntPtr data, int len) {
+            BlinkBrowserPInvoke.wkeNetSetData(job, data, len);
+        }
+
         public void Close()
         {
             job = IntPtr.Zero;

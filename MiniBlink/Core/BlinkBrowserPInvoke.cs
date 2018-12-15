@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Text;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MiniBlinkPinvoke
 {
@@ -13,7 +14,7 @@ namespace MiniBlinkPinvoke
     /// </summary>
     public static class BlinkBrowserPInvoke
     {
-        const string BlinkBrowserdll = "node.dll";//"node.dll";miniblink
+        const string BlinkBrowserdll = "miniblink.dll";//"node.dll";miniblink
         [DllImport("kernel32.dll", EntryPoint = "SetProcessWorkingSetSize")]
         public static extern int SetProcessWorkingSetSize(IntPtr process, int minSize, int maxSize);
         [DllImport("user32.dll", EntryPoint = "SendMessageW")]
@@ -445,7 +446,12 @@ namespace MiniBlinkPinvoke
         [DllImport(BlinkBrowserdll, CallingConvention = CallingConvention.Cdecl)]
         public static extern void wkeEnableWindow(IntPtr webView, [MarshalAs(UnmanagedType.I1)] bool enable);
         [DllImport(BlinkBrowserdll, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void wkeFree(IntPtr ptr);
+        public static extern void wkeFreeMemBuf(IntPtr ptr);
+        [DllImport(BlinkBrowserdll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void wkeNetFreePostBodyElements(IntPtr ptr);
+        [DllImport(BlinkBrowserdll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void wkeNetFreePostBodyElement(IntPtr ptr);
+
         [DllImport(BlinkBrowserdll, CallingConvention = CallingConvention.Cdecl)]
         public static extern int wkeGetContentHeight(IntPtr webView);
         [DllImport(BlinkBrowserdll, CallingConvention = CallingConvention.Cdecl)]
@@ -641,6 +647,22 @@ namespace MiniBlinkPinvoke
                 data.Add(ch);
             }
             return Encoding.UTF8.GetString(data.ToArray());
+        }
+
+        public static byte[] IntptrToBytes(IntPtr intPtr, int bufferLength)
+        {
+            var result = new byte[bufferLength];
+            var count = bufferLength;
+            for (var i = 0; i < bufferLength; i++)
+            {
+                result[i] = Marshal.ReadByte(intPtr, i);
+                if (result[i] == 0)
+                {
+                    count = i;
+                    break;
+                }
+            }
+            return result.Take(count).ToArray();
         }
 
     }

@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -15,10 +14,20 @@ using System.Windows.Forms;
 
 namespace MiniBlinkPinvoke
 {
+
+    public delegate WebResouresResult OnWebLoadResourceUrl(string url, bool post, IntPtr job);
+
     public class BlinkBrowser : Control, IMessageFilter
     {
-
+        public string ResNameSpace { get => mResNameSpace; set => mResNameSpace = value; }
+        private string mResNameSpace = "MiniBlinkPinvoke";
+        //ModManager
         //Timer timer = new Timer();
+        public bool CookieEnabled { get; set; }
+        public bool NpapiPluginsEnabled { get; set; }
+        public bool HeadlessEnabled { get; set; }
+        public bool CspCheckEnable { get; set; }
+        public bool NavigationToNewWindowEnable { get; set; }
 
         string CookiePath { get; set; }
         public IntPtr handle = IntPtr.Zero;
@@ -57,6 +66,7 @@ namespace MiniBlinkPinvoke
         public delegate void OnDownload(string url);
         public event OnDownload OnDownloadFile;
 
+        public OnWebLoadResourceUrl OnWebLoadResource;
 
         wkeOnShowDevtoolsCallback _wkeOnShowDevtoolsCallback;
 
@@ -64,6 +74,8 @@ namespace MiniBlinkPinvoke
         {
             BlinkBrowserPInvoke.wkeShowDevtools(this.handle, path, _wkeOnShowDevtoolsCallback, IntPtr.Zero);
         }
+
+        public wkeOnShowDevtoolsCallback WkeOnShowDevtoolsCallback { set => _wkeOnShowDevtoolsCallback = value; get => _wkeOnShowDevtoolsCallback; }
 
         /// <summary>
         /// 页面是否加载失败
@@ -119,6 +131,64 @@ namespace MiniBlinkPinvoke
             Console.WriteLine("call OnwkeLoadUrlEndCallback url:" + url);
             //Console.WriteLine(buf.Utf8IntptrToString().Length);
         }
+
+        #region postbody
+        public static List<PostBody> GetBodys(IntPtr job)
+        {
+            List<PostBody> posts = null;
+            if (BlinkBrowserPInvoke.wkeNetGetRequestMethod(job) == wkeRequestType.kWkeRequestTypePost)
+            {
+                IntPtr elementsPtr = BlinkBrowserPInvoke.wkeNetGetPostBody(job);
+                if (elementsPtr != IntPtr.Zero)
+                {
+                    try
+                    {
+                        wkePostBodyElements elements = (wkePostBodyElements)Marshal.PtrToStructure(elementsPtr, typeof(wkePostBodyElements));
+                        if (elements.element != IntPtr.Zero)
+                        {
+                            posts = new List<PostBody>();
+                            for (int i = 0; i < elements.elementSize; i++)
+                            {
+                                IntPtr item = Marshal.ReadIntPtr(elements.element, i);
+                                wkePostBodyElement e = (wkePostBodyElement)Marshal.PtrToStructure(item, typeof(wkePostBodyElement));
+                                try
+                                {
+                                    PostBody body = new PostBody();
+                                    body.fileLength = e.fileLength;
+                                    body.fileStart = e.fileStart;
+                                    body.fileStart = e.fileStart;
+                                    body.filePath = e.filePath == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(BlinkBrowserPInvoke.wkeGetString(e.filePath));
+                                    if (e.data != IntPtr.Zero)
+                                    {
+                                        wkeMemBuf buf = (wkeMemBuf)Marshal.PtrToStructure(e.data, typeof(wkeMemBuf));
+                                        if (buf.data != IntPtr.Zero)
+                                        {
+                                            body.data = BlinkBrowserPInvoke.IntptrToBytes(buf.data, buf.length);
+                                        }
+                                    }
+                                    posts.Add(body);
+                                }
+                                finally
+                                {
+                                    // BlinkBrowserPInvoke.wkeNetFreePostBodyElement(item);
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // MessageBox.Show("出错：" + e.Message + "\n" + e.StackTrace);
+                    }
+                    finally
+                    {
+                        BlinkBrowserPInvoke.wkeNetFreePostBodyElements(elementsPtr);
+                    }
+                }
+            }
+            return posts;
+        }
+        #endregion
+
         /// <summary>
         /// 这个方法里可HOOK所有资源。
         /// </summary>
@@ -130,64 +200,44 @@ namespace MiniBlinkPinvoke
         bool OnwkeLoadUrlBeginCallback(IntPtr webView, IntPtr param, string url, IntPtr job)
         {
             //mb://index.html/js/index.js
+            if (OnWebLoadResource != null)
+            {
+                bool isPost = BlinkBrowserPInvoke.wkeNetGetRequestMethod(job) == wkeRequestType.kWkeRequestTypePost;
+                WebResouresResult rs = OnWebLoadResource.Invoke(url, isPost, job);
+                if (rs.Success)
+                {
+                    string data = rs.data;
+                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi(rs.MimeType));
+                    //wkeNetSetURL(job, url);
+                    if (rs.encoding == null || rs.encoding == Encoding.Default)
+                    {
+                        if (rs.encoding == null)
+                        {
+                            rs.encoding = Encoding.Default;
+                        }
+                        BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
+                    }
+                    else
+                    {
+                        BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemUni(data), rs.encoding.GetBytes(data).Length);
+                    }
+                    return true;
+                }
+            }
             if (url.StartsWith("mb://"))
             {
                 Regex regex = new Regex(@"mb://", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
-                string str = regex.Replace(url, "");// url.TrimStart("mb://".ToArray());//.Substring(startIndex);
-                                                    //if (url != Url)//加载本地资源
-                                                    //{
-                                                    //    str = url.TrimStart(Url.ToArray());
-                                                    //}
+                string str = regex.Replace(url, "");
                 str = str.Replace('/', '.');
-                System.Reflection.Assembly Assemblys = BlinkBrowserPInvoke.ResourceAssemblys["MiniBlinkPinvokeDemo"];
-                if (Assemblys != null)
-                {
-                    using (Stream sm = Assemblys.GetManifestResourceStream("MiniBlinkPinvokeDemo." + str))
-                    {
-                        if (sm != null)
-                        {
-                            StreamReader m_stream = new StreamReader(sm, Encoding.Default);
-                            m_stream.BaseStream.Seek(0, SeekOrigin.Begin);
-                            string strLine = m_stream.ReadToEnd();
-                            m_stream.Close();
-                            string data = strLine;
-                            if (url.EndsWith(".css"))
-                            {
-                                BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/css"));
-                            }
-                            else if (url.EndsWith(".png"))
-                            {
-                                BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/png"));
-                            }
-                            else if (url.EndsWith(".gif"))
-                            {
-                                BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/gif"));
-                            }
-                            else if (url.EndsWith(".jpg"))
-                            {
-                                BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/jpg"));
-                            }
-                            else if (url.EndsWith(".js"))
-                            {
-                                BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("application/javascript"));
-                            }
-                            else
-                            {
-                                BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/html"));
-                            }
-                            //wkeNetSetURL(job, url);
-                            BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
-                        }
-                        else
-                        {
-                            ResNotFond(url, job);
-                        }
-                    }
-                }
-                else
-                {
-                    ResNotFond(url, job);
-                }
+                LoadResource(str, job);
+                return true;
+            }
+            else if (url.StartsWith("assets://"))
+            {
+                Regex regex = new Regex(@"assets://", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
+                string str = regex.Replace(url, "");
+                str = str.Replace('/', '.');
+                LoadResource(str, job);
                 return true;
             }
             else
@@ -197,6 +247,59 @@ namespace MiniBlinkPinvoke
             }
             return false;
         }
+
+        private void LoadResource(string str, IntPtr job) {
+            System.Reflection.Assembly Assemblys = Assembly.GetExecutingAssembly();
+            if (Assemblys != null)
+            {
+                using (Stream sm = Assemblys.GetManifestResourceStream(mResNameSpace + "." + str))
+                {
+                    if (sm != null)
+                    {
+                        StreamReader m_stream = new StreamReader(sm, Encoding.Default);
+                        m_stream.BaseStream.Seek(0, SeekOrigin.Begin);
+                        string strLine = m_stream.ReadToEnd();
+                        m_stream.Close();
+                        string data = strLine;
+                        if (url.EndsWith(".css"))
+                        {
+                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/css"));
+                        }
+                        else if (url.EndsWith(".png"))
+                        {
+                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/png"));
+                        }
+                        else if (url.EndsWith(".gif"))
+                        {
+                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/gif"));
+                        }
+                        else if (url.EndsWith(".jpg"))
+                        {
+                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/jpg"));
+                        }
+                        else if (url.EndsWith(".js"))
+                        {
+                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("application/javascript"));
+                        }
+                        else
+                        {
+                            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/html"));
+                        }
+                        //wkeNetSetURL(job, url);
+                        BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
+                    }
+                    else
+                    {
+                        ResNotFond(url, job);
+                    }
+                }
+            }
+            else
+            {
+                ResNotFond(url, job);
+            }
+        }
+
         private static void ResNotFond(string url, IntPtr job)
         {
             string data = "<html><head><title>404没有找到资源</title></head><body>404没有找到资源</body></html>";
@@ -507,6 +610,12 @@ namespace MiniBlinkPinvoke
                 Directory.CreateDirectory(CookiePath);
             }
             BlinkBrowserPInvoke.wkeSetCookieJarPath(handle, CookiePath);
+
+            BlinkBrowserPInvoke.wkeSetCookieEnabled(handle, CookieEnabled);
+            BlinkBrowserPInvoke.wkeSetNpapiPluginsEnabled(handle, NpapiPluginsEnabled);
+            BlinkBrowserPInvoke.wkeSetHeadlessEnabled(handle, HeadlessEnabled);
+            BlinkBrowserPInvoke.wkeSetCspCheckEnable(handle, CspCheckEnable);
+            BlinkBrowserPInvoke.wkeSetNavigationToNewWindowEnable(handle, NavigationToNewWindowEnable);
 
             BlinkBrowserPInvoke.wkeResize(handle, Width, Height);
             BlinkBrowserPInvoke.wkeSetUserAgentW(this.handle, "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.75 Safari/537.36");
@@ -1100,7 +1209,7 @@ namespace MiniBlinkPinvoke
                         {
                             var _cookie = listCookie[0];
 
-                        Lable:
+                            Lable:
                             if (_cookie == host)
                             {
                                 sbCookie.AppendFormat("{0}={1};", listCookie[5], listCookie[6]);

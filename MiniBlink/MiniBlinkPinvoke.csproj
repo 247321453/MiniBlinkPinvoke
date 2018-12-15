@@ -57,7 +57,7 @@
     <Compile Include="Core\JsValue.cs" />
     <Compile Include="PostBody.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="WebResouresResult.cs" />
+    <Compile Include="Response.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="BlinkBrowser.resx">

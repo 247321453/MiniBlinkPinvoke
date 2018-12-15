@@ -15,7 +15,7 @@ using System.Windows.Forms;
 namespace MiniBlinkPinvoke
 {
 
-    public delegate WebResouresResult OnWebLoadResourceUrl(string url, bool post, IntPtr job);
+    public delegate bool OnWebLoadResourceUrl(string url, Response res);
 
     public class BlinkBrowser : Control, IMessageFilter
     {
@@ -137,63 +137,6 @@ namespace MiniBlinkPinvoke
             //Console.WriteLine(buf.Utf8IntptrToString().Length);
         }
 
-        #region postbody
-        public static List<PostBody> GetBodys(IntPtr job)
-        {
-            List<PostBody> posts = null;
-            if (BlinkBrowserPInvoke.wkeNetGetRequestMethod(job) == wkeRequestType.kWkeRequestTypePost)
-            {
-                IntPtr elementsPtr = BlinkBrowserPInvoke.wkeNetGetPostBody(job);
-                if (elementsPtr != IntPtr.Zero)
-                {
-                    try
-                    {
-                        wkePostBodyElements elements = (wkePostBodyElements)Marshal.PtrToStructure(elementsPtr, typeof(wkePostBodyElements));
-                        if (elements.element != IntPtr.Zero)
-                        {
-                            posts = new List<PostBody>();
-                            for (int i = 0; i < elements.elementSize; i++)
-                            {
-                                IntPtr item = Marshal.ReadIntPtr(elements.element, i);
-                                wkePostBodyElement e = (wkePostBodyElement)Marshal.PtrToStructure(item, typeof(wkePostBodyElement));
-                                try
-                                {
-                                    PostBody body = new PostBody();
-                                    body.fileLength = e.fileLength;
-                                    body.fileStart = e.fileStart;
-                                    body.fileStart = e.fileStart;
-                                    body.filePath = e.filePath == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(BlinkBrowserPInvoke.wkeGetString(e.filePath));
-                                    if (e.data != IntPtr.Zero)
-                                    {
-                                        wkeMemBuf buf = (wkeMemBuf)Marshal.PtrToStructure(e.data, typeof(wkeMemBuf));
-                                        if (buf.data != IntPtr.Zero)
-                                        {
-                                            body.data = BlinkBrowserPInvoke.IntptrToBytes(buf.data, buf.length);
-                                        }
-                                    }
-                                    posts.Add(body);
-                                }
-                                finally
-                                {
-                                    // BlinkBrowserPInvoke.wkeNetFreePostBodyElement(item);
-                                }
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // MessageBox.Show("出错：" + e.Message + "\n" + e.StackTrace);
-                    }
-                    finally
-                    {
-                        BlinkBrowserPInvoke.wkeNetFreePostBodyElements(elementsPtr);
-                    }
-                }
-            }
-            return posts;
-        }
-        #endregion
-
         /// <summary>
         /// 这个方法里可HOOK所有资源。
         /// </summary>
@@ -204,34 +147,22 @@ namespace MiniBlinkPinvoke
         /// <returns></returns>
         bool OnwkeLoadUrlBeginCallback(IntPtr webView, IntPtr param, string url, IntPtr job)
         {
-            //mb://index.html/js/index.js
-            if (OnWebLoadResource != null)
+            using (Response response = new Response(job))
             {
-                bool isPost = BlinkBrowserPInvoke.wkeNetGetRequestMethod(job) == wkeRequestType.kWkeRequestTypePost;
-                WebResouresResult rs = OnWebLoadResource.Invoke(url, isPost, job);
-                if (rs.Success)
+                //mb://index.html/js/index.js
+                if (OnWebLoadResource != null)
                 {
-                    string data = rs.data;
-                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi(rs.MimeType));
-                    //wkeNetSetURL(job, url);
-                    if (rs.encoding == null || rs.encoding == Encoding.Default)
+                    if (OnWebLoadResource.Invoke(url, response))
                     {
-                        if (rs.encoding == null)
-                        {
-                            rs.encoding = Encoding.Default;
-                        }
-                        BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
+                        return true;
                     }
-                    else
-                    {
-                        BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemUni(data), rs.encoding.GetBytes(data).Length);
-                    }
-                    return true;
                 }
-            }
-            if (Assets != null) {
-                if (Assets.OnUrlLoad(url, job)) {
-                    return true;
+                if (Assets != null)
+                {
+                    if (Assets.OnUrlLoad(url, response))
+                    {
+                        return true;
+                    }
                 }
             }
             //如果需要 OnwkeLoadUrlEndCallback 回调，需要取消注释下面的 hook

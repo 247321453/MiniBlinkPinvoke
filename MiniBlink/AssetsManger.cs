@@ -13,20 +13,20 @@ namespace MiniBlinkPinvoke
         {
         }
 
-        public bool OnUrlLoad(string url, IntPtr job)
+        public bool OnUrlLoad(string url, Response response)
         {
             if (url.StartsWith("mb://"))
             {
                 Regex regex = new Regex(@"mb://", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
                 string str = regex.Replace(url, "");
-                LoadResource(url, str, job);
+                LoadResource(url, str, response);
                 return true;
             }
             else if (url.StartsWith("assets://"))
             {
                 Regex regex = new Regex(@"assets://", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
                 string str = regex.Replace(url, "");
-                LoadResource(url, str, job);
+                LoadResource(url, str, response);
                 return true;
             }
             return false;
@@ -44,48 +44,36 @@ namespace MiniBlinkPinvoke
             return Assemblys.GetManifestResourceStream("MiniBlinkPinvoke." + rsName);
         }
 
-        protected void LoadResource(string url, string path, IntPtr job)
+        protected virtual void LoadResource(string url, string path, Response response)
         {
-            string rsName = PathToResName(path);
             Stream sm = Open(path);
             if (sm == null)
             {
-                ResNotFond(url, job);
+                ResNotFond(url, response);
                 return;
             }
+            string data = ReadData(sm);
+            response.SetMimeType(GetMimeType(url));
+            response.SetAnsiData(data);
+        }
+
+        protected virtual string ReadData(Stream sm)
+        {
             try
             {
-                StreamReader m_stream = new StreamReader(sm, Encoding.Default);
-                m_stream.BaseStream.Seek(0, SeekOrigin.Begin);
-                string strLine = m_stream.ReadToEnd();
-                m_stream.Close();
+                string strLine;
+                using (StreamReader m_stream = new StreamReader(sm, Encoding.Default))
+                {
+                    try
+                    {
+                        m_stream.BaseStream.Seek(0, SeekOrigin.Begin);
+                    }
+                    catch {
+                    }
+                    strLine = m_stream.ReadToEnd();
+                }
                 string data = strLine;
-                if (url.EndsWith(".css"))
-                {
-                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/css"));
-                }
-                else if (url.EndsWith(".png"))
-                {
-                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/png"));
-                }
-                else if (url.EndsWith(".gif"))
-                {
-                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/gif"));
-                }
-                else if (url.EndsWith(".jpg"))
-                {
-                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("image/jpg"));
-                }
-                else if (url.EndsWith(".js"))
-                {
-                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("application/javascript"));
-                }
-                else
-                {
-                    BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/html"));
-                }
-                //wkeNetSetURL(job, url);
-                BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
+                return strLine;
             }
             finally
             {
@@ -93,17 +81,44 @@ namespace MiniBlinkPinvoke
             }
         }
 
-        protected virtual string Make404(string url)
+        protected virtual void ResNotFond(string url, Response response)
         {
-            return "<html><head><title>404没有找到资源</title></head><body>404没有找到资源:<br/>" + url + "</body></html>";
+            response.SetMimeType("text/html");
+            response.SetAnsiData("<html><head><title>404没有找到资源</title></head><body>404没有找到资源:<br/>" + url + "</body></html>");
         }
 
-        private void ResNotFond(string url, IntPtr job)
+        protected virtual string GetMimeType(string url)
         {
-            string data = Make404(url);
-            BlinkBrowserPInvoke.wkeNetSetMIMEType(job, Marshal.StringToCoTaskMemAnsi("text/html"));
-            //wkeNetSetURL(job, url);
-            BlinkBrowserPInvoke.wkeNetSetData(job, Marshal.StringToCoTaskMemAnsi(data), Encoding.Default.GetBytes(data).Length);
+            string path = url.Split('?')[0];
+            if (path.EndsWith(".css"))
+            {
+                return "text/css";
+            }
+            else if (path.EndsWith(".png"))
+            {
+                return "image/png";
+            }
+            else if (path.EndsWith(".webp"))
+            {
+                return "image/webp";
+            }
+            else if (path.EndsWith(".gif"))
+            {
+                return "image/gif";
+            }
+            else if (path.EndsWith(".jpg") || path.EndsWith(".jpeg"))
+            {
+                return "image/jpg";
+            }
+            else if (path.EndsWith(".js"))
+            {
+                return "application/javascript";
+            }
+            else
+            {
+                return "text/html";
+            }
         }
+
     }
 }

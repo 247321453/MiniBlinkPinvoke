@@ -68,7 +68,7 @@ namespace MiniBlinkPinvoke
 
         wkeOnShowDevtoolsCallback _wkeOnShowDevtoolsCallback;
 
-        public AssetsManger AssetsManger;
+        private AssetsManger Assets { get; set; }
 
         public void ShowDevtools(string path)
         {
@@ -76,6 +76,11 @@ namespace MiniBlinkPinvoke
         }
 
         public wkeOnShowDevtoolsCallback WkeOnShowDevtoolsCallback { set => _wkeOnShowDevtoolsCallback = value; get => _wkeOnShowDevtoolsCallback; }
+
+
+        public void SetAssetsManger(AssetsManger mgr) {
+            Assets = mgr;
+        }
 
         /// <summary>
         /// 页面是否加载失败
@@ -224,8 +229,8 @@ namespace MiniBlinkPinvoke
                     return true;
                 }
             }
-            if (AssetsManger != null) {
-                if (AssetsManger.OnUrlLoad(url, job)) {
+            if (Assets != null) {
+                if (Assets.OnUrlLoad(url, job)) {
                     return true;
                 }
             }
